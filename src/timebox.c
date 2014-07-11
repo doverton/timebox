@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 		NULL
 	};
 
-	if(argc < 2) {
+	if (argc < 2) {
 		fprintf(stderr, "usage %s <timestamp> [program [args...]]\n", argv[0]);
 		return 1;
 	}
@@ -59,10 +59,10 @@ int main(int argc, char *argv[])
 
 	/* Assume it's a timestamp */
 	test = strtol(argv[1], &errptr, 0);
-	if(*errptr != 0) {
+	if (*errptr != 0) {
 		/* Is it a file? read the modification time of the file */
 		struct stat sb;
-		if(stat(argv[1], &sb) == 0) {
+		if (stat(argv[1], &sb) == 0) {
 			snprintf(filebuf, sizeof(filebuf), "%ld", sb.st_mtime);
 			argv[1] = filebuf;
 		} else {
@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
 #endif
 	setenv("TIMEBOX_TIME", argv[1], 1);
 
-	if(argc < 3) {
+	if (argc < 3) {
 		sub_argv = sub_shell;
 		sub_argc = sizeof(sub_shell) / sizeof(sub_shell[0]);
 	} else {
@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
 		sub_argc = argc - 2;
 	}
 
-	if((r = execvp(sub_argv[0], sub_argv)) < 0) {
+	if ((r = execvp(sub_argv[0], sub_argv)) < 0) {
 		fprintf(stderr, "%s: %s: cannot exec: %s\n", argv[0], sub_argv[0], strerror(errno));
 		return 3;
 	}
@@ -108,7 +108,7 @@ static const char *get_preloader(const char *progname)
 	int i;
 
 #ifdef __linux__
-	if((r = readlink("/proc/self/exe", buf, sizeof(buf) - 1 - strlen(PRELOAD_LIB))) < 0) {
+	if ((r = readlink("/proc/self/exe", buf, sizeof(buf) - 1 - strlen(PRELOAD_LIB))) < 0) {
 		fprintf(stderr, "%s: cannot read /proc/self/exe: %s", progname, strerror(errno));
 		exit(4);
 	}
@@ -125,28 +125,28 @@ static const char *get_preloader(const char *progname)
 	 */
 
 	p = buf + r;
-	while(p >= buf && *p != '/')
+	while (p >= buf && *p != '/')
 		p--;
-	if(p >= buf) {
+	if (p >= buf) {
 		*p-- = 0;
-		while(p >= buf && *p != '/')
+		while (p >= buf && *p != '/')
 			p--;
-		if(p >= buf) {
-			if(strcmp(p, "/bin") == 0) {
+		if (p >= buf) {
+			if (strcmp(p, "/bin") == 0) {
 				strcat(p, "/" PRELOAD_LIB);
-				if(access(buf, R_OK) == 0)
+				if (access(buf, R_OK) == 0)
 					return buf;
 				strcpy(p, "/lib/" PRELOAD_LIB);
-				if(access(buf, R_OK) == 0)
+				if (access(buf, R_OK) == 0)
 					return buf;
 			}
 		}
 	}
 #endif
 
-	for(i = 0; i < sizeof(list) / sizeof(list[0]); i++) {
+	for (i = 0; i < sizeof(list) / sizeof(list[0]); i++) {
 		snprintf(buf, sizeof(buf), "%s/%s", list[i], PRELOAD_LIB);
-		if(access(buf, R_OK) == 0)
+		if (access(buf, R_OK) == 0)
 			return buf;
 	}
 

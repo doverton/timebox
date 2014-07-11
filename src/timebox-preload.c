@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2012, David Overton
+ * Copyright (c) 2010-2014, David Overton
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -34,6 +34,7 @@
 #include <errno.h>
 
 static time_t timebox_delta;
+static int cond_use_monotonic;
 
 #ifdef __APPLE__
 static int (*t_gettimeofday)(struct timeval *tv, void *tzp);
@@ -41,8 +42,11 @@ static int (*t_gettimeofday)(struct timeval *tv, void *tzp);
 static int (*t_gettimeofday)(struct timeval *tv, struct timezone *tzp);
 #endif
 static int (*t_pthread_cond_timedwait)(pthread_cond_t *, pthread_mutex_t *, const struct timespec *);
-#ifdef HAVE_GLIBC
+#ifdef HAVE_RT
 static int (*t_clock_gettime)(clockid_t, struct timespec *);
+static int (*t_pthread_condattr_setpshared)(pthread_condattr_t *, int);
+#endif
+#ifdef HAVE_GLIBC
 static int (*t_pthread_cond_timedwait_2_2_5)(pthread_cond_t *, pthread_mutex_t *, const struct timespec *);
 #endif
 static int (*t_pthread_mutex_timedlock)(pthread_mutex_t *, const struct timespec *);
@@ -59,8 +63,11 @@ void __attribute__((constructor)) ctor(void)
 	struct timeval tv;
 
         *((void **)&t_gettimeofday) = dlsym(RTLD_NEXT, "gettimeofday");
-#ifdef HAVE_GLIBC
+#ifdef HAVE_RT
         *((void **)&t_clock_gettime) = dlsym(RTLD_NEXT, "clock_gettime");
+	*((void **)&t_pthread_condattr_setpshared) = dlsym(RTLD_NEXT, "pthread_condattr_setpshared");
+#endif
+#ifdef HAVE_GLIBC
 	*((void **)&t_pthread_cond_timedwait) = dlvsym(RTLD_NEXT, "pthread_cond_timedwait", "GLIBC_2.3.2");
         *((void **)&t_pthread_cond_timedwait_2_2_5) = dlvsym(RTLD_NEXT, "pthread_cond_timedwait", "GLIBC_2.2.5");
 #else
@@ -111,6 +118,22 @@ int clock_gettime(clockid_t clk_id, struct timespec *tp)
 
 	return 0;
 }
+
+int pthread_condattr_setpshared(pthread_condattr_t *attr, int pshared)
+{
+	int r;
+	clockid_t clk_id;
+
+	if (!t_pthread_condattr_setpshared)
+		exit(118);
+	if ((r = pthread_condattr_setpshared(attr, pshared)) != 0)
+		return r;
+	if (pthread_condattr_getclock(attr, &clk_id) == 0)
+		cond_use_monotonic = (clk_id == CLOCK_MONOTONIC || clk_id == CLOCK_MONOTONIC_RAW);
+
+	return r;
+}
+
 #endif
 
 #ifdef __APPLE__
@@ -166,7 +189,15 @@ int pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex, const s
 	if (t_pthread_cond_timedwait == NULL)
 		exit(120);
 
-	tp.tv_sec -= timebox_delta;
+#ifdef HAVE_RT
+# ifdef HAVE_GLIBC
+	if (cond->__data.__nwaiters & 1 == 0 && cond_use_monotonic == 0)
+		tp.tv_sec -= timebox_delta;
+#else
+	if (!cond_use_monotonic)
+		tp.tv_sec -= timebox_delta;
+# endif
+#endif
 
 	return t_pthread_cond_timedwait(cond, mutex, &tp);
 }
@@ -179,7 +210,10 @@ int pthread_cond_timedwait_2_2_5(pthread_cond_t *cond, pthread_mutex_t *mutex, c
         if (t_pthread_cond_timedwait == NULL)
                 exit(120);
 
-        tp.tv_sec -= timebox_delta;
+# ifdef HAVE_RT
+	if (cond->__data.__nwaiters & 1 == 0 && cond_use_monotonic == 0)
+	        tp.tv_sec -= timebox_delta;
+# endif
 
         return t_pthread_cond_timedwait_2_2_5(cond, mutex, &tp);
 }
